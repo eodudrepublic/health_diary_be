@@ -1,6 +1,7 @@
-from sqlalchemy.orm import Session
-from models import User, Friend
-from typing import Optional
+from sqlalchemy.orm import Session, joinedload
+from models import User, Friend, Routine, ExerciseName
+from typing import Optional, List
+from schemas import RoutineCreate
 from fastapi import HTTPException
 
 #카카오 로그인 및 회원 가입 관련 crud 정리
@@ -111,3 +112,66 @@ def delete_friend(db: Session, user_id: int, friend_id: int):
     db.commit()
 
     return {"message": "Friend deleted successfully"}
+
+# 루틴 생성 - 선택한 운동들 임시 저장
+def save_temporary_routines_in_db(db: Session, routines: List[RoutineCreate]):
+
+    for routine in routines:
+        new_routine = Routine(
+            user_id=routine.user_id,
+            exercise_id=routine.exercise_id,
+            sets=routine.sets,
+            reps=routine.reps,
+        )
+        db.add(new_routine)
+    
+    db.commit()
+
+# 루틴 이름 추가
+def update_routine_name_in_db(db: Session, user_id: int, routine_name: str) -> bool:
+
+    # user_id와 routine_name IS NULL인 경우 필터링
+    routines = db.query(Routine).filter(
+        Routine.user_id == user_id,
+        Routine.routine_name == None
+    ).all()
+
+    if not routines:
+        # 업데이트할 데이터가 없는 경우 False 반환
+        return False
+
+    # 이름 업데이트
+    for routine in routines:
+        routine.routine_name = routine_name
+
+    db.commit()
+    return True
+
+
+# 루틴 가져오는 용 - 루틴 이름으로 조회
+def get_routines_by_name_in_db(db: Session, user_id: int, routine_name: str):
+
+    routines = db.query(Routine).options(joinedload(Routine.exercise)).filter(
+        Routine.user_id == user_id,
+        Routine.routine_name == routine_name
+    ).all()
+
+    # 운동 데이터를 반환
+    return [
+        {
+            "id": routine.id,
+            "exercise_id": routine.exercise_id,
+            "exercise_name": routine.exercise.name if routine.exercise else "Unknown Exercise",
+            "sets": routine.sets,
+            "reps": routine.reps,
+        }
+        for routine in routines
+    ]
+
+# 운동 데이터 전체 조회
+def get_all_exercises(db : Session):
+    return db.query(ExerciseName).all()
+
+# 운동 이름으로 운동 조회하기
+def search_exercises_by_name(db : Session, query: str):
+    return db.query(ExerciseName).filter(ExerciseName.name.contains(query)).all()

@@ -2,8 +2,8 @@ from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from database import SessionLocal, Base, engine, get_db
 from auth import verify_kakao_token
-from crud import get_user_by_kakao_id, create_user, add_friend
-from schemas import OAuthToken, UserResponse
+from crud import get_user_by_kakao_id, create_user, add_friend,save_temporary_routines_in_db, update_routine_name_in_db, get_routines_by_name_in_db, get_all_exercises, search_exercises_by_name 
+from schemas import OAuthToken, UserResponse, RoutineCreate
 from models import User, Friend, ExerciseName, Routine, MealPhoto, OwnPhoto, Record
 from datetime import datetime
 from typing import Dict,List
@@ -103,25 +103,62 @@ def get_user_friends(user_id: int, db: Session = Depends(get_db)):
 
     return {"friends": friend_list}
 
-# 운동 루틴 생성 및 조회
+# 선택한 운동들 임시 저장
+@app.post("/routines/temporary")
+def save_temporary_routines(routines: List[RoutineCreate], db: Session = Depends(get_db)):
 
-@app.post("/routines")
-def create_routine(date: dict, db: Session = Depends(get_db)):
-    user_id = data.get("user_id")
-    exercise_id = data.get("exercise_id")
-    sets = data.get("sets")
-    reps = data.get("reps")
+    save_temporary_routines_in_db(db, routines)
+    return {"message": "Temporary routines saved successfully!"}
+  
+# 저장된 운동들에 루틴 이름 업데이트
+@app.put("/routines/update_name")
+def update_routine_name(user_id: int, routine_name: str, db: Session = Depends(get_db)):
 
-    if not all([user_id, exercise_id, sets, reps]):
-        raise HTTPException(status_code=400, detail="All fields are required")
+    print(f"Request received: user_id={user_id}, routine_name={routine_name}")  # 요청 디버깅 로그
 
-    routine = Routine(user_id=user_id, exercise_id=exercise_id, sets=sets, reps=reps)
-    db.add(routine)
-    db.commit()
-    db.refresh(routine)
-    return routine
+    try:
+        success = update_routine_name_in_db(db, user_id, routine_name)
+        print(f"Update success: {success}")  # 성공 여부 확인
+    except Exception as e:
+        print(f"Error during update: {e}")  # 예외 처리 로그
+        raise HTTPException(status_code=500, detail="Failed to update routine name.")
 
-@app.get("/users/{user_id}/routines")
-def get_user_routines(user_id: int, db: Session = Depends(get_db)):
-    routines = db.query(Routine).filter(Routine.user_id == user_id).all()
-    return {"routines": [{"id": r.id, "exercise_id": r.exercise_id, "sets": r.sets, "reps": r.reps} for r in routines]}
+    if not success:
+        raise HTTPException(status_code=404, detail="No temporary routines found.")
+
+    return {"message": f"Routine '{routine_name}' updated successfully!"}
+
+# 특정 사용자의 루틴 이름으로 운동 조회
+@app.get("/users/{user_id}/routines/{routine_name}")
+def get_routines_by_name(user_id: int, routine_name: str, db: Session = Depends(get_db)):
+
+    exercises = get_routines_by_name_in_db(db, user_id, routine_name)
+    return {"routine_name": routine_name, "exercises": exercises}
+
+# 전체 운동 목록 반환
+@app.get("/exercises")
+def get_all_exercises_list(db: Session = Depends(get_db)):
+
+    exercises = get_all_exercises(db)
+    return [
+        {
+            "id": exercise.id,
+            "name": exercise.name,
+            "target_area": exercise.target_area,
+        }
+        for exercise in exercises
+    ]
+
+# 운동 이름 검색
+@app.get("/exercises/search")
+def search_exercises(query: str, db: Session = Depends(get_db)):
+
+    exercises = search_exercises_by_name(db, query)
+    return [
+        {
+            "id": exercise.id,
+            "name": exercise.name,
+            "target_area": exercise.target_area,
+        }
+        for exercise in exercises
+    ]

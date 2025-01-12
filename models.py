@@ -25,7 +25,6 @@ class User(Base):
     is_default_nickname = Column(Boolean, nullable=True)  # 기본 닉네임 여부
 
     # Relationships
-    todos = relationship("Todo", back_populates="user")
     records = relationship("Record", back_populates="user")
     meal_photos = relationship("MealPhoto", back_populates="user")
     own_photos = relationship("OwnPhoto", back_populates="user")
@@ -52,6 +51,7 @@ class ExerciseName(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)  # 운동 이름
     target_area = Column(String, nullable=False)  # 자극 부위
+    # image_url = Column(String, nullable=True) # 운동 이미지 url - 대영이 짤 넣기~
 
 
 class Routine(Base):
@@ -60,11 +60,12 @@ class Routine(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # 사용자 ID
     exercise_id = Column(Integer, ForeignKey("exercise_names.id"), nullable=False)  # 운동 ID
+    routine_name = Column(String, nullable=True)
     sets = Column(Integer, nullable=False)  # 세트 수
     reps = Column(Integer, nullable=False)  # 반복 횟수
 
     # Relationships
-    user = relationship("User", back_populates="todos")
+    user = relationship("User")
     exercise = relationship("ExerciseName")
 
 

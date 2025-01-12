@@ -1,50 +1,42 @@
 from sqlalchemy.orm import Session, joinedload
 from models import User, Friend, Routine, ExerciseName
 from typing import Optional, List
-from schemas import RoutineCreate
+from schemas import RoutineCreate, UserLoginRequest
 from fastapi import HTTPException
 
-#카카오 로그인 및 회원 가입 관련 crud 정리
-def get_user_by_kakao_id(db: Session, kakao_id: str) -> Optional[User]:
-    """
-    주어진 kakao_id를 가진 사용자를 데이터베이스에서 검색합니다.
-    """
-    return db.query(User).filter(User.kakao_id == kakao_id).first()
+def manage_user_in_db(db: Session, user: UserLoginRequest):
 
+    # 기존 유저 확인
+    existing_user = db.query(User).filter(User.kakao_id == user.kakao_id).first()
+    if existing_user:
+        return {
+            "message": "User exists",
+            "user": {
+                "kakao_id": existing_user.kakao_id,
+                "nickname": existing_user.nickname,
+                "profile_image": existing_user.profile_image,
+            },
+        }
 
-def create_user(
-    db: Session,
-    kakao_id: str,
-    connected_at: str,
-    email: Optional[str],
-    nickname: Optional[str],
-    profile_image: Optional[str],
-    thumbnail_image: Optional[str],
-    profile_nickname_needs_agreement: Optional[bool],
-    profile_image_needs_agreement: Optional[bool],
-    is_default_image: Optional[bool],
-    is_default_nickname: Optional[bool],
-) -> User:
-    """
-    주어진 정보를 바탕으로 새로운 사용자를 생성하고 데이터베이스에 저장
-    """
-    user = User(
-        kakao_id=kakao_id,
-        connected_at=connected_at,
-        email=email,
-        nickname=nickname,
-        profile_image=profile_image,
-        thumbnail_image=thumbnail_image,
-        profile_nickname_needs_agreement=profile_nickname_needs_agreement,
-        profile_image_needs_agreement=profile_image_needs_agreement,
-        is_default_image=is_default_image,
-        is_default_nickname=is_default_nickname,
+    # 새로운 유저 추가
+    new_user = User(
+        kakao_id=user.kakao_id,
+        nickname=user.nickname,
+        profile_image=user.profile_image,
+        connected_at=user.connected_at,
     )
-    db.add(user)
+    db.add(new_user)
     db.commit()
-    db.refresh(user)
-    return user
+    db.refresh(new_user)
 
+    return {
+        "message": "User added",
+        "user": {
+            "kakao_id": new_user.kakao_id,
+            "nickname": new_user.nickname,
+            "profile_image": new_user.profile_image,
+        },
+    }
 #friend 테이블 관련 crud 정리
 
 def add_friend(db: Session, scanned_user_id: int, qr_user_id: int):

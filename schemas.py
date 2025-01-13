@@ -9,6 +9,7 @@ from typing import Optional, Literal, List, Dict
 
 # 단일 운동 데이터 저장용
 class RoutineCreate(BaseModel):
+    
     user_id: int
     exercise_id: int
     sets: int
@@ -16,10 +17,10 @@ class RoutineCreate(BaseModel):
 
 class UserLoginRequest(BaseModel):
 
-    kakao_id: str
-    nickname: Optional[str] = None
-    profile_image: Optional[str] = None
-    connected_at: Optional[str] = None
+    kakao_id: str  # 프론트엔드의 kakao_id와 일치
+    nickname: Optional[str]  # nickname과 일치
+    profile_image: Optional[str]  # profile_image와 일치
+    connected_at: Optional[str]  # connected_at과 일치
 
 
 class UserLoginResponse(BaseModel):

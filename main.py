@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from database import SessionLocal, Base, engine, get_db
 #from auth import verify_kakao_token
-from crud import add_friend,save_temporary_routines_in_db, update_routine_name_in_db, get_routines_by_name_in_db, get_all_exercises, search_exercises_by_name, manage_user_in_db 
+from crud import add_friend,save_temporary_routines_in_db, update_routine_name_in_db, get_routines_by_name_in_db, get_all_exercises, search_exercises_by_name, manage_user_in_db, get_user_profile, get_user_records, save_own_photo, get_own_photos, get_social_photos, upload_social_photo 
 from schemas import RoutineCreate, UserLoginRequest, UserLoginResponse
 from models import User, Friend, ExerciseName, Routine, MealPhoto, OwnPhoto, Record
 from datetime import datetime
@@ -23,50 +23,9 @@ def read_root():
 def read_root():
     return {"message": "Server is running"}
 
-# #로그인 화면
-# @app.post("/users/login", response_model=UserResponse)
-# def login_or_register_with_kakao(token: OAuthToken, db: Session = Depends(get_db)):
-#     kakao_user_info = verify_kakao_token(token.oauth_token)
-
-#     user = get_user_by_kakao_id(db, kakao_id=kakao_user_info["id"])
-#     if not user:
-#         user = create_user(
-#             db,
-#             kakao_id=kakao_user_info["id"],
-#             connected_at=kakao_user_info.get("connected_at"),
-#             nickname=kakao_user_info.get("properties", {}).get("nickname"),
-#             profile_image=kakao_user_info.get("properties", {}).get("profile_image"),
-#             profile_nickname_needs_agreement=kakao_user_info.get("kakao_account", {}).get(
-#                 "profile_nickname_needs_agreement"
-#             ),
-#             profile_image_needs_agreement=kakao_user_info.get("kakao_account", {}).get(
-#                 "profile_image_needs_agreement"
-#             ),
-#             is_default_image=kakao_user_info.get("kakao_account", {}).get("profile", {}).get(
-#                 "is_default_image"
-#             ),
-#             is_default_nickname=kakao_user_info.get("kakao_account", {}).get("profile", {}).get(
-#                 "is_default_nickname"
-#             ),
-#         )
-
-#     return UserResponse(
-#         id=user.id,
-#         kakao_id=user.kakao_id,
-#         connected_at=user.connected_at,
-#         email=user.email,
-#         nickname=user.nickname,
-#         profile_image=user.profile_image,
-#         thumbnail_image=user.thumbnail_image,
-#         profile_nickname_needs_agreement=user.profile_nickname_needs_agreement,
-#         profile_image_needs_agreement=user.profile_image_needs_agreement,
-#         is_default_image=user.is_default_image,
-#         is_default_nickname=user.is_default_nickname,
-#     )
-
-@app.post("/user/login", response_model=UserLoginResponse)
+@app.post("/users/login", response_model=UserLoginResponse)
 def manage_user(user: UserLoginRequest, db: Session = Depends(get_db)):
-
+    print("Received request body:", user)
     result = manage_user_in_db(db, user)
     return result
 
@@ -90,11 +49,11 @@ def get_user_friends(user_id: int, db: Session = Depends(get_db)):
     특정 사용자의 친구 목록을 반환합니다.
     """
     friends = db.query(Friend).filter(Friend.user_id == user_id).all()
+    friend_list = []
     if not friends:
         raise HTTPException(status_code=404, detail="No friends found for the user")
 
     # 친구 목록 데이터를 반환
-    friend_list = []
     for friend in friends:
         friend_user = db.query(User).filter(User.id == friend.friend_id).first()
         if friend_user:
@@ -102,7 +61,6 @@ def get_user_friends(user_id: int, db: Session = Depends(get_db)):
                 "id": friend_user.id,
                 "nickname": friend_user.nickname,
                 "profile_image": friend_user.profile_image,
-                "email": friend_user.email,
             })
 
     return {"friends": friend_list}
@@ -166,3 +124,63 @@ def search_exercises(query: str, db: Session = Depends(get_db)):
         }
         for exercise in exercises
     ]
+
+# 사용자 프로필, 운동 완료 일수 불러오기
+@app.get("/users/{user_id}/profile")
+def get_user_profile_endpoint(user_id: int, db : Session = Depends(get_db)):
+    return get_user_profile(db, user_id)
+
+# 운동 완료 날짜를 캘린더에 표시하기 - 사용자의 운동 기록 데이터 날짜 별로 가져오기
+@app.get("/users/{user_id}/records")
+def get_user_records_endpoint(user_id: int, db: Session = Depends(get_db)):
+
+    from crud import get_user_records
+    return get_user_records(db, user_id)
+
+# 오운완 사진 DB 저장
+@app.post("/users/{user_id}/own_photos")
+def upload_own_photo_endpoint(user_id: int, photo_path: str, db: Session = Depends(get_db)):
+
+    from crud import save_own_photo
+    photo = save_own_photo(db, user_id, photo_path)
+    return {"message": "Photo saved successfully", "photo": photo}
+
+# 특정 사용자가 저장한 모든 오운완 사진 조회
+@app.get("/users/{user_id}/own_photos")
+def get_own_photos_endpoint(user_id: int, db: Session = Depends(get_db)):
+
+    from crud import get_own_photos
+    return get_own_photos(db, user_id)
+
+# 소셜탭 - 업로드된 모든 사진 조회
+@app.get("/social/photos")
+def get_social_photos_endpoint(user_id: int, db: Session = Depends(get_db)):
+
+    from crud import get_social_photos
+    return get_social_photos(db, user_id)
+
+# 나의 오운완 사진 소셜탭에 업로드
+@app.post("/social/upload")
+def upload_social_photo_endpoint(user_id: int, photo_id: int, db: Session = Depends(get_db)):
+
+    from crud import upload_social_photo
+    photo = upload_social_photo(db, user_id, photo_id)
+    return {"message": "Photo uploaded successfully", "photo": photo}
+
+
+# # 식단 사진 DB 저장
+# @app.post("/users/{user_id}/meal_photos") 
+# def ():
+
+# # 식단 사진 캘린더탭에서 조회
+# @app.get("")
+# def ():
+
+# # 사용자 설정 저장 - 다크 모드, 앱 지문 잠금, 보이스 알림 대영/현정 설정
+# @app.post("/users/{user_id}/settings")
+# def ():
+
+
+"""
+ 오운완이랑 식단 사진 둘다 사진 촬영 한 다음에 저장하는건데 어떤 요청 쓰는거지?
+"""

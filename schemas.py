@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Literal, List, Dict
+from datetime import datetime
 
 # 루틴 이름이랑 여러 운동 데이터 저장용
 # class RoutineCreateWithName(BaseModel):
@@ -28,3 +29,30 @@ class UserLoginResponse(BaseModel):
     message: str
     user: dict
 
+class OwnPhotoCreate(BaseModel) :
+    photo_path: str
+
+class PhotoUploadRequest(BaseModel):
+    photo_id: int
+
+class OwnPhotoResponse(BaseModel):
+    id: int
+    user_id: int
+    datetime: datetime
+    photo_path: str
+    is_uploaded: bool
+
+    class Config:
+        orm_mode = True
+
+class MealPhotoCreate(BaseModel):
+    photo_path: str
+
+class MealPhotoResponse(BaseModel):
+    id: int
+    user_id: int
+    datetime: datetime
+    photo_path: str
+
+    class Config:
+        orm_mode = True

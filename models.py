@@ -57,6 +57,18 @@ class Routine(Base):
     user = relationship("User")
     exercise = relationship("ExerciseName")
 
+class OwnPhoto(Base):
+    __tablename__ = "own_photos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    datetime = Column(DateTime, nullable=False)
+    photo_path = Column(Text, nullable=False)
+    is_uploaded = Column(Boolean, default=False)  # 소셜탭 업로드 여부 추가
+
+    # Relationships
+    user = relationship("User", back_populates="own_photos")
+
 
 class MealPhoto(Base):
     __tablename__ = "meal_photos"
@@ -68,21 +80,6 @@ class MealPhoto(Base):
 
     # Relationships
     user = relationship("User", back_populates="meal_photos")
-
-
-class OwnPhoto(Base):
-    __tablename__ = "own_photos"
-
-    id = Column(Integer, primary_key=True, index=True)
-    routine_id = Column(Integer, ForeignKey("routines.id"), nullable=False)  # 루틴 ID
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # 사용자 ID (추가적인 조회용)
-    datetime = Column(DateTime, nullable=False)  # 사진 찍은 날짜 및 시간
-    photo_path = Column(Text, nullable=False)  # 사진 경로
-
-    # Relationships
-    routine = relationship("Routine")
-    user = relationship("User", back_populates="own_photos")
-
 
 class Record(Base):
     __tablename__ = "records"

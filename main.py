@@ -1,9 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from database import SessionLocal, Base, engine, get_db
-#from auth import verify_kakao_token
-from crud import add_friend,save_temporary_routines_in_db, update_routine_name_in_db, get_routines_by_name_in_db, get_all_exercises, search_exercises_by_name, manage_user_in_db, get_user_profile, get_user_records, save_own_photo, get_own_photos, get_social_photos, upload_social_photo 
-from schemas import RoutineCreate, UserLoginRequest, UserLoginResponse
+from crud import add_friend,save_temporary_routines_in_db, update_routine_name_in_db, get_routines_by_name_in_db, get_all_exercises, search_exercises_by_name, manage_user_in_db, get_user_profile, save_own_photo
+from schemas import RoutineCreate, UserLoginRequest, UserLoginResponse, OwnPhotoResponse, OwnPhotoCreate, PhotoUploadRequest, MealPhotoResponse, MealPhotoCreate
 from models import User, Friend, ExerciseName, Routine, MealPhoto, OwnPhoto, Record
 from datetime import datetime
 from typing import Dict,List
@@ -28,6 +27,8 @@ def manage_user(user: UserLoginRequest, db: Session = Depends(get_db)):
     print("Received request body:", user)
     result = manage_user_in_db(db, user)
     return result
+
+
 
 # qr 코드로 친구 추가 엔드포인트
 @app.post("/friends")
@@ -138,49 +139,88 @@ def get_user_records_endpoint(user_id: int, db: Session = Depends(get_db)):
     return get_user_records(db, user_id)
 
 # 오운완 사진 DB 저장
-@app.post("/users/{user_id}/own_photos")
-def upload_own_photo_endpoint(user_id: int, photo_path: str, db: Session = Depends(get_db)):
+@app.post("/users/{user_id}/own_photos", response_model=OwnPhotoResponse)
+def upload_own_photo_endpoint(
+    user_id: int,
+    photo: OwnPhotoCreate,
+    db: Session = Depends(get_db)
+):
+    try:
+        # 사진 저장
+        photo_data = save_own_photo(db, user_id, photo.photo_path)
 
-    from crud import save_own_photo
-    photo = save_own_photo(db, user_id, photo_path)
-    return {"message": "Photo saved successfully", "photo": photo}
+        # Pydantic 모델로 변환하여 반환
+        return photo_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
-# 특정 사용자가 저장한 모든 오운완 사진 조회
-@app.get("/users/{user_id}/own_photos")
-def get_own_photos_endpoint(user_id: int, db: Session = Depends(get_db)):
+# 내 오운완 사진 전체 조회
+@app.get("/users/{user_id}/own_photos", response_model=list[OwnPhotoResponse])
+def get_user_own_photos(user_id: int, db: Session = Depends(get_db)):
 
-    from crud import get_own_photos
-    return get_own_photos(db, user_id)
+    from crud import get_own_photos_by_user
+    photos = get_own_photos_by_user(db, user_id)
+    if not photos:
+        raise HTTPException(status_code=404, detail="No photos found for this user")
+    return photos
 
-# 소셜탭 - 업로드된 모든 사진 조회
-@app.get("/social/photos")
-def get_social_photos_endpoint(user_id: int, db: Session = Depends(get_db)):
+# 소셜탭에 오운완 사진 업로드 하기
+@app.post("/users/{user_id}/social/upload", response_model=OwnPhotoResponse)
+def upload_to_social_tab(
+    user_id: int,
+    request: PhotoUploadRequest,
+    db: Session = Depends(get_db)
+):
+
+    from crud import mark_photo_as_uploaded
+
+    photo = mark_photo_as_uploaded(db, request.photo_id, user_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found or not authorized")
+    return photo
+
+# 소셜탭에서 나랑 친구들이 업로드한 모든 사진 보기
+@app.get("/users/{user_id}/social/photos", response_model=list[OwnPhotoResponse])
+def get_all_social_photos(user_id: int, db: Session = Depends(get_db)):
 
     from crud import get_social_photos
-    return get_social_photos(db, user_id)
 
-# 나의 오운완 사진 소셜탭에 업로드
-@app.post("/social/upload")
-def upload_social_photo_endpoint(user_id: int, photo_id: int, db: Session = Depends(get_db)):
-
-    from crud import upload_social_photo
-    photo = upload_social_photo(db, user_id, photo_id)
-    return {"message": "Photo uploaded successfully", "photo": photo}
+    photos = get_social_photos(db, user_id)
+    if not photos:
+        raise HTTPException(status_code=404, detail="No social photos found")
+    return photos
 
 
-# # 식단 사진 DB 저장
-# @app.post("/users/{user_id}/meal_photos") 
-# def ():
+# 식단 사진 DB 저장
+@app.post("/users/{user_id}/meal_photos", response_model=MealPhotoResponse)
+def upload_meal_photo(
+    user_id: int,
+    photo: MealPhotoCreate,
+    db: Session = Depends(get_db)
+):
+    
+    from crud import save_meal_photo
 
-# # 식단 사진 캘린더탭에서 조회
-# @app.get("")
-# def ():
+    try:
+        # 식단 사진 저장
+        meal_photo = save_meal_photo(db, user_id, photo.photo_path)
+        return meal_photo
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+# 내 식단 사진 전체 조회
+@app.get("/users/{user_id}/meal_photos", response_model=list[MealPhotoResponse])
+def get_meal_photos(user_id: int, db: Session = Depends(get_db)):
+
+    from crud import get_all_meal_photos_by_user
+
+    photos = get_all_meal_photos_by_user(db, user_id)
+    if not photos:
+        raise HTTPException(status_code=404, detail="No meal photos found for this user")
+    return photos
 
 # # 사용자 설정 저장 - 다크 모드, 앱 지문 잠금, 보이스 알림 대영/현정 설정
 # @app.post("/users/{user_id}/settings")
 # def ():
 
 
-"""
- 오운완이랑 식단 사진 둘다 사진 촬영 한 다음에 저장하는건데 어떤 요청 쓰는거지?
-"""

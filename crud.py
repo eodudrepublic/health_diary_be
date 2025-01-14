@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session, joinedload
 from models import User, Friend, Routine, ExerciseName, Record, MealPhoto, OwnPhoto
 from typing import Optional, List
 from schemas import RoutineCreate, UserLoginRequest
+from datetime import datetime
 from fastapi import HTTPException
 
 def manage_user_in_db(db: Session, user: UserLoginRequest):
@@ -185,7 +186,7 @@ def get_user_profile(db: Session, user_id: int):
         "completed_days": completed_days,
     }
 
-# 운동 완료 날짜를 캘린더에 표시하기 - 사용자의 운동 기록 데이터 날짜 별로 가져오기
+# 운동 완료 날짜를 캘린더에 표시하기 - 사용자의 운동 기록 데이터 날짜 별로 가져오기 / postman 확인 완료료
 def get_user_records(db: Session, user_id: int):
 
     # 사용자 존재 여부 확인
@@ -209,53 +210,64 @@ def get_user_records(db: Session, user_id: int):
         for record in records
     ]
 
-# 오운완 사진 DB 저장
+# 오운완 사진 DB 저장 
 def save_own_photo(db: Session, user_id: int, photo_path: str):
 
+    print(f"Saving photo for user_id={user_id}, photo_path={photo_path}")
     new_photo = OwnPhoto(
         user_id=user_id,
         photo_path=photo_path,
-        datetime=datetime.now()
+        datetime=datetime.now(),  # 현재 시간을 저장
+        is_uploaded=False  # 기본적으로 소셜탭에 업로드되지 않은 상태
     )
     db.add(new_photo)
     db.commit()
     db.refresh(new_photo)
     return new_photo
 
-# 특정 사용자가 저장한 모든 오운완 사진 조회
-def get_own_photos(db: Session, user_id: int):
+# 내 오운완 사진 전체 조회 - postman 확인 완료
+def get_own_photos_by_user(db: Session, user_id: int):
 
-    photos = db.query(OwnPhoto).filter(OwnPhoto.user_id == user_id).all()
-    return [
-        {"id": photo.id, "photo_path": photo.photo_path, "datetime": photo.datetime}
-        for photo in photos
-    ]
+    return db.query(OwnPhoto).filter(OwnPhoto.user_id == user_id).all()
 
-# 소셜탭에서 오운완 사진 전체 조회
-def get_social_photos(db: Session, user_id: int):
+# 소셜탭에 오운완 사진 업로드 하기
+def mark_photo_as_uploaded(db: Session, photo_id: int, user_id: int):
 
-    # 본인과 친구의 ID 조회
-    friend_ids = (
-        db.query(Friend.friend_id)
-        .filter(Friend.user_id == user_id)
-        .subquery()
-    )
-    # 본인과 친구들이 업로드한 사진 조회
-    photos = db.query(OwnPhoto).filter(
-        OwnPhoto.user_id.in_([user_id]) | OwnPhoto.user_id.in_(friend_ids)
-    ).all()
-    return [
-        {"id": photo.id, "user_id": photo.user_id, "photo_path": photo.photo_path, "datetime": photo.datetime}
-        for photo in photos
-    ]
-
-# 나의 오운완 사진 하나 소셜탭에 업로드
-def upload_social_photo(db: Session, user_id: int, photo_id: int):
-
-    # 사진이 본인의 사진인지 확인
     photo = db.query(OwnPhoto).filter(OwnPhoto.id == photo_id, OwnPhoto.user_id == user_id).first()
     if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found or not owned by user")
-
-    # 업로드된 사진으로 저장 (별도의 플래그 추가 가능)
+        return None
+    photo.is_uploaded = True  # 업로드 상태로 변경
+    db.commit()
+    db.refresh(photo)
     return photo
+
+# 소셜탭에서 나랑 친구들이 업로드한 모든 사진 보기
+def get_social_photos(db: Session, user_id: int):
+
+    # 내 친구들의 ID 가져오기
+    friends_subquery = db.query(Friend.friend_id).filter(Friend.user_id == user_id).subquery()
+
+    # 내 사진 및 친구들의 업로드된 사진 조회
+    photos = db.query(OwnPhoto).filter(
+        (OwnPhoto.user_id == user_id) |  # 내 사진
+        (OwnPhoto.user_id.in_(friends_subquery))  # 친구들의 사진
+    ).filter(OwnPhoto.is_uploaded == True).all()  # 업로드된 사진만 반환
+    return photos
+
+# 식단 사진 DB 저장 
+def save_meal_photo(db: Session, user_id: int, photo_path: str):
+
+    new_meal_photo = MealPhoto(
+        user_id=user_id,
+        datetime=datetime.now(),  
+        photo_path=photo_path
+    )
+    db.add(new_meal_photo)
+    db.commit()
+    db.refresh(new_meal_photo)
+    return new_meal_photo
+
+# 내 식단 사진 전체 조회
+def get_all_meal_photos_by_user(db: Session, user_id: int):
+
+    return db.query(MealPhoto).filter(MealPhoto.user_id == user_id).all()

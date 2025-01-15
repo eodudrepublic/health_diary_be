@@ -2,12 +2,11 @@ from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from database import SessionLocal, Base, engine, get_db
 from crud import add_friend,save_temporary_routines_in_db, update_routine_name_in_db, get_routines_by_name_in_db, get_all_exercises, search_exercises_by_name, manage_user_in_db, get_user_profile, save_own_photo
-from schemas import RoutineCreate, UserLoginRequest, UserLoginResponse, OwnPhotoResponse, OwnPhotoCreate, PhotoUploadRequest, MealPhotoResponse, MealPhotoCreate
+from schemas import RoutineCreate, UserLoginRequest, UserLoginResponse, OwnPhotoResponse, OwnPhotoCreate, PhotoUploadRequest, MealPhotoResponse, MealPhotoCreate,  PhotoUploadResponse, BodyMetricsCreate, BodyMetricsResponse, RoutineUpdateRequest, RoutineResponse, RoutineNameUpdateRequest
 from models import User, Friend, ExerciseName, Routine, MealPhoto, OwnPhoto, Record
 from datetime import datetime
 from typing import Dict,List
 from collections import defaultdict
-
 
 app = FastAPI()
 
@@ -23,11 +22,13 @@ def read_root():
     return {"message": "Server is running"}
 
 @app.post("/users/login", response_model=UserLoginResponse)
-def manage_user(user: UserLoginRequest, db: Session = Depends(get_db)):
-    print("Received request body:", user)
+def login(user: UserLoginRequest, db: Session = Depends(get_db)):
     result = manage_user_in_db(db, user)
-    return result
-
+    return {
+        "id": result["user"]["id"],  # 수정: id -> user_id
+        "message": result["message"],
+        "user": result["user"],
+    }
 
 
 # qr 코드로 친구 추가 엔드포인트
@@ -67,29 +68,48 @@ def get_user_friends(user_id: int, db: Session = Depends(get_db)):
     return {"friends": friend_list}
 
 # 선택한 운동들 임시 저장
-@app.post("/routines/temporary")
-def save_temporary_routines(routines: List[RoutineCreate], db: Session = Depends(get_db)):
-
+@app.post("/users/{user_id}/routines/temporary")
+def save_temporary_routines(
+    user_id: int, routines: List[RoutineCreate], db: Session = Depends(get_db)
+):
+    from crud import save_temporary_routines_in_db
     save_temporary_routines_in_db(db, routines)
     return {"message": "Temporary routines saved successfully!"}
+
   
 # 저장된 운동들에 루틴 이름 업데이트
-@app.put("/routines/update_name")
-def update_routine_name(user_id: int, routine_name: str, db: Session = Depends(get_db)):
-
-    print(f"Request received: user_id={user_id}, routine_name={routine_name}")  # 요청 디버깅 로그
+@app.put("/users/{user_id}/routines/update", response_model=RoutineResponse)
+def update_routine(
+    user_id: int,
+    routine_data: RoutineUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    from crud import update_routine_details
 
     try:
-        success = update_routine_name_in_db(db, user_id, routine_name)
-        print(f"Update success: {success}")  # 성공 여부 확인
+        updated_routine = update_routine_details(db, user_id, routine_data)
+        return updated_routine
     except Exception as e:
-        print(f"Error during update: {e}")  # 예외 처리 로그
-        raise HTTPException(status_code=500, detail="Failed to update routine name.")
+        raise HTTPException(status_code=404, detail=str(e))
 
-    if not success:
-        raise HTTPException(status_code=404, detail="No temporary routines found.")
 
-    return {"message": f"Routine '{routine_name}' updated successfully!"}
+
+# 특정 사용자의 루틴 이름, 운동 별 세트, 횟수 수정
+@app.put("/users/{user_id}/routines/update", response_model=RoutineResponse)
+def update_routine(
+    user_id: int,
+    routine_data: RoutineUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    from crud import update_routine_details
+
+    try:
+        updated_routine = update_routine_details(db, user_id, routine_data)
+        return updated_routine
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 
 # 특정 사용자의 루틴 이름으로 운동 조회
 @app.get("/users/{user_id}/routines/{routine_name}")
@@ -97,6 +117,8 @@ def get_routines_by_name(user_id: int, routine_name: str, db: Session = Depends(
 
     exercises = get_routines_by_name_in_db(db, user_id, routine_name)
     return {"routine_name": routine_name, "exercises": exercises}
+
+ 
 
 # 전체 운동 목록 반환
 @app.get("/exercises")
@@ -128,7 +150,7 @@ def search_exercises(query: str, db: Session = Depends(get_db)):
 
 # 사용자 프로필, 운동 완료 일수 불러오기
 @app.get("/users/{user_id}/profile")
-def get_user_profile_endpoint(user_id: int, db : Session = Depends(get_db)):
+def get_user_profile_endpoint(user_id: int, db: Session = Depends(get_db)):
     return get_user_profile(db, user_id)
 
 # 운동 완료 날짜를 캘린더에 표시하기 - 사용자의 운동 기록 데이터 날짜 별로 가져오기
@@ -171,25 +193,41 @@ def upload_to_social_tab(
     request: PhotoUploadRequest,
     db: Session = Depends(get_db)
 ):
-
     from crud import mark_photo_as_uploaded
+    # 요청 데이터 검증
+    if not request.photo_id or not request.base64_image:
+        raise HTTPException(status_code=400, detail="Invalid request: photo_id and base64_image are required")
 
-    photo = mark_photo_as_uploaded(db, request.photo_id, user_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found or not authorized")
-    return photo
+    try:
+        # CRUD 함수 호출하여 사진 업로드 처리
+        photo = mark_photo_as_uploaded(db, request.photo_id, user_id, request.base64_image)
+        if not photo:
+            raise HTTPException(status_code=404, detail="Photo not found or not authorized")
+        return photo
+    except Exception as e:
+        # 에러 처리
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
 
 # 소셜탭에서 나랑 친구들이 업로드한 모든 사진 보기
-@app.get("/users/{user_id}/social/photos", response_model=list[OwnPhotoResponse])
+@app.get("/users/{user_id}/social/photos", response_model=List[OwnPhotoResponse])
 def get_all_social_photos(user_id: int, db: Session = Depends(get_db)):
 
     from crud import get_social_photos
+    try:
+        photos = get_social_photos(db, user_id)
+        if not photos:
+            # 빈 리스트 반환
+            return []
 
-    photos = get_social_photos(db, user_id)
-    if not photos:
-        raise HTTPException(status_code=404, detail="No social photos found")
-    return photos
+        # 디버깅 로그 추가
+        print(f"Debug: Retrieved {len(photos)} photos for user_id: {user_id}")
+        return photos
 
+    except Exception as e:
+        # 예기치 않은 에러 처리
+        print(f"Error fetching social photos for user_id {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
 
 # 식단 사진 DB 저장
 @app.post("/users/{user_id}/meal_photos", response_model=MealPhotoResponse)
@@ -219,6 +257,37 @@ def get_meal_photos(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No meal photos found for this user")
     return photos
 
+# 사용자의 체중 및 골격근량, 체지방률 기록 추가
+@app.post("/users/{user_id}/body_metrics", response_model=BodyMetricsResponse)
+def add_body_metrics(
+    user_id: int,
+    metrics_data: BodyMetricsCreate,
+    db: Session = Depends(get_db),
+):
+    from crud import create_body_metrics
+    try:
+        # CRUD 함수 호출
+        new_metrics = create_body_metrics(db, user_id, metrics_data)
+        return new_metrics
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save body metrics: {str(e)}")
+
+# 사용자의 체중 및 골격근량, 체지방률 기록 조회
+@app.get("/users/{user_id}/body_metrics", response_model=List[BodyMetricsResponse])
+def get_body_metrics(user_id: int, db: Session = Depends(get_db)):
+
+    from crud import get_user_body_metrics
+
+    try:
+        records = get_user_body_metrics(db, user_id)
+        if not records:
+            raise HTTPException(status_code=404, detail="No records found for the user")
+        
+        # Pydantic 스키마로 변환
+        return [BodyMetricsResponse.from_orm(record) for record in records]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch records: {str(e)}")
+    
 # # 사용자 설정 저장 - 다크 모드, 앱 지문 잠금, 보이스 알림 대영/현정 설정
 # @app.post("/users/{user_id}/settings")
 # def ():

@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session, joinedload
 from models import User, Friend, Routine, ExerciseName, Record, MealPhoto, OwnPhoto, BodyMetrics
 from typing import Optional, List
-from schemas import RoutineCreate, UserLoginRequest, BodyMetricsCreate, RoutineUpdateRequest
+from schemas import RoutineCreate, UserLoginRequest, BodyMetricsCreate, RoutineUpdateRequest, ExerciseUpdateRequest
 from datetime import datetime
 from fastapi import HTTPException
 import base64
@@ -116,96 +116,93 @@ def delete_friend(db: Session, user_id: int, friend_id: int):
 # 루틴 생성 - 선택한 운동들 임시 저장
 def save_temporary_routines_in_db(db: Session, routines: List[RoutineCreate]):
     for routine in routines:
+        # 동일한 user_id와 exercise_id, routine_id로 저장된 루틴이 없으면 추가
         existing_routine = db.query(Routine).filter(
             Routine.user_id == routine.user_id,
-            Routine.exercise_id == routine.exercise_id
+            Routine.exercise_id == routine.exercise_id,
+            Routine.routine_id == routine.routine_id
         ).first()
 
-        if existing_routine:
-            print(f"Debug: Routine already exists: {existing_routine}")
-        else:
+        if not existing_routine:
             new_routine = Routine(
+                routine_id=routine.routine_id,
                 user_id=routine.user_id,
                 exercise_id=routine.exercise_id,
                 sets=routine.sets,
                 reps=routine.reps,
             )
             db.add(new_routine)
-            print(f"Debug: New routine added: {new_routine}")
-
+    
     db.commit()
-    print("Debug: Temporary routines saved successfully.")
 
+# 루틴 이름을 업데이트하는 함수
+def update_routine_name_in_db(db: Session, user_id: int, routine_name: str):
+    # user_id와 동일한 routine_id를 가진 모든 루틴을 가져옵니다.
+    routines = db.query(Routine).filter(Routine.user_id == user_id).all()
 
-
-# 루틴 이름 추가
-def update_routine_name_in_db(db: Session, user_id: int, routine_name: str, filter_existing: bool = False) -> bool:
-    query = db.query(Routine).filter(Routine.user_id == user_id)
-    if filter_existing:
-        query = query.filter(Routine.routine_name == None)
-
-    routines = query.all()
-    print(f"Debug: Routines to update: {[routine.id for routine in routines]}")
-
+    # 루틴이 없다면 False 반환
     if not routines:
         print("Debug: No routines found to update.")
         return False
 
+    # 루틴 이름 업데이트
     for routine in routines:
-        print(f"Debug: Updating routine {routine.id} name to {routine_name}")
+        # 동일한 routine_id를 가진 루틴이 있으면 routine_name을 동일하게 업데이트
         routine.routine_name = routine_name
 
     db.commit()
     print("Debug: Routines updated successfully.")
     return True
 
-
-
 # 특정 사용자의 루틴 이름, 운동 별 세트, 횟수 수정
-def update_routine_details(
-    db: Session, user_id: int, routine_data: RoutineUpdateRequest
+def update_routine_details_and_name(
+    db: Session, user_id: int, routine_id: int, routine_name: Optional[str], exercises: List[ExerciseUpdateRequest]
 ) -> List[Routine]:
     updated_routines = []
-    for exercise in routine_data.exercises:
-        print(f"Debug: Looking for routine_id={routine_data.routine_id}, user_id={user_id}, exercise_id={exercise.exercise_id}")
+    
+    for exercise in exercises:
         routine = db.query(Routine).filter(
-            Routine.id == routine_data.routine_id,
+            Routine.id == routine_id,
             Routine.user_id == user_id,
             Routine.exercise_id == exercise.exercise_id
         ).first()
 
         if not routine:
-            print(f"Debug: No matching routine found for Exercise ID {exercise.exercise_id}")
-            raise Exception(f"Exercise ID {exercise.exercise_id} not found in the routine.")
+            raise HTTPException(status_code=404, detail=f"Routine not found for Exercise ID {exercise.exercise_id}")
 
+        # 세트 수와 반복 횟수 수정
         routine.sets = exercise.sets
         routine.reps = exercise.reps
-        print(f"Debug: Updated routine - ID: {routine.id}, Sets: {routine.sets}, Reps: {routine.reps}")
+
+        # 루틴 이름 수정 (필요시)
+        if routine_name:
+            routine.routine_name = routine_name
+
+        db.commit()
+        db.refresh(routine)
         updated_routines.append(routine)
 
-    db.commit()
-    print("Debug: Routines updated successfully.")
     return updated_routines
 
-# 루틴 가져오는 용 - 루틴 이름으로 조회
-def get_routines_by_name_in_db(db: Session, user_id: int, routine_name: str):
+# # 루틴 가져오는 용 - 루틴 이름으로 조회
+# def get_routines_by_name_in_db(db: Session, user_id: int, routine_name: str):
 
-    routines = db.query(Routine).options(joinedload(Routine.exercise)).filter(
-        Routine.user_id == user_id,
-        Routine.routine_name == routine_name
-    ).all()
+#     routines = db.query(Routine).options(joinedload(Routine.exercise)).filter(
+#         Routine.user_id == user_id,
+#         Routine.routine_name == routine_name
+#     ).all()
 
-    # 운동 데이터를 반환
-    return [
-        {
-            "id": routine.id,
-            "exercise_id": routine.exercise_id,
-            "exercise_name": routine.exercise.name if routine.exercise else "Unknown Exercise",
-            "sets": routine.sets,
-            "reps": routine.reps,
-        }
-        for routine in routines
-    ]
+#     # 운동 데이터를 반환
+#     return [
+#         {
+#             "id": routine.id,
+#             "exercise_id": routine.exercise_id,
+#             "exercise_name": routine.exercise.name if routine.exercise else "Unknown Exercise",
+#             "sets": routine.sets,
+#             "reps": routine.reps,
+#         }
+#         for routine in routines
+#     ]
 
 # 운동 데이터 전체 조회
 def get_all_exercises(db : Session):
@@ -278,7 +275,7 @@ def get_own_photos_by_user(db: Session, user_id: int):
 
 # 오운완 사진 소셜탭에 업로드
 def clean_base64_data(base64_image: str) -> str:
-    # Base64 데이터에서 프리픽스를 제거합니다 (예: "data:image/jpeg;base64,")
+
     if base64_image.startswith("data:"):
         base64_image = re.sub(r"^data:image/\w+;base64,", "", base64_image)
     return base64_image
@@ -296,6 +293,9 @@ def save_base64_image_to_file(base64_image: str, user_id: int) -> str:
         # Base64 데이터 클린업 (프리픽스 제거 및 패딩 추가)
         base64_image = clean_base64_data(base64_image)
         base64_image = add_base64_padding(base64_image)
+
+        print(f"Debug: Cleaned Base64 length: {len(base64_image)}")
+        print(f"Debug: Cleaned Base64 preview: {base64_image[:50]}...")
 
         # 디코딩된 이미지 데이터를 바이트로 변환
         image_data = base64.b64decode(base64_image)
@@ -347,8 +347,18 @@ def mark_photo_as_uploaded(db: Session, photo_id: int, user_id: int, base64_imag
     return photo
 
 # 소셜탭에서 나랑 친구들이 업로드한 모든 사진 보기
-def get_social_photos(db: Session, user_id: int):
+def convert_image_to_base64(photo_path: str) -> str:
+    try:
+        with open(photo_path, "rb") as img_file:
+            img_data = img_file.read()
+            # Base64로 인코딩
+            img_base64 = base64.b64encode(img_data).decode('utf-8')
+        return img_base64
+    except Exception as e:
+        print(f"Error converting image to Base64: {e}")
+        return None
 
+def get_social_photos_with_base64(db: Session, user_id: int) -> List[dict]:
     # 내 친구들의 ID 가져오기
     friends_subquery = db.query(Friend.friend_id).filter(Friend.user_id == user_id).subquery()
 
@@ -356,8 +366,23 @@ def get_social_photos(db: Session, user_id: int):
     photos = db.query(OwnPhoto).filter(
         (OwnPhoto.user_id == user_id) |  # 내 사진
         (OwnPhoto.user_id.in_(friends_subquery))  # 친구들의 사진
-    ).filter(OwnPhoto.is_uploaded == True).all()  # 업로드된 사진만 반환
-    return photos
+    ).filter(OwnPhoto.is_uploaded == True).all()
+    
+    social_photos = []
+
+    for photo in photos:
+        img_base64 = convert_image_to_base64(photo.photo_path)
+        if img_base64:
+            social_photos.append({
+                "id": photo.id,
+                "user_id": photo.user_id,
+                "photo_path": photo.photo_path,
+                "datetime": photo.datetime,
+                "is_uploaded": photo.is_uploaded,
+                "base64_image": f"data:image/jpeg;base64,{img_base64}"  # Base64로 변환된 이미지 추가
+            })
+    
+    return social_photos
 
 # 식단 사진 DB 저장 
 def save_meal_photo(db: Session, user_id: int, photo_path: str):
@@ -392,6 +417,6 @@ def create_body_metrics(db: Session, user_id: int, metrics_data: BodyMetricsCrea
     db.refresh(body_metrics)  
     return body_metrics
 
-#사용자의 체중 및 골격근량, 체지방률 기록 조회회
+#사용자의 체중 및 골격근량, 체지방률 기록 조회
 def get_user_body_metrics(db: Session, user_id: int) -> list[BodyMetrics]:
     return db.query(BodyMetrics).filter(BodyMetrics.user_id == user_id).order_by(BodyMetrics.record_date).all()

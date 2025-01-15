@@ -47,6 +47,7 @@ class Routine(Base):
     __tablename__ = "routines"
 
     id = Column(Integer, primary_key=True, index=True)
+    routine_id = Column(Integer, index=True)  # 동일한 루틴 ID를 사용하는 운동들
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # 사용자 ID
     exercise_id = Column(Integer, ForeignKey("exercise_names.id"), nullable=False)  # 운동 ID
     routine_name = Column(String, nullable=True)
@@ -56,6 +57,7 @@ class Routine(Base):
     # Relationships
     user = relationship("User")
     exercise = relationship("ExerciseName")
+
 
 class OwnPhoto(Base):
     __tablename__ = "own_photos"

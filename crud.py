@@ -273,92 +273,20 @@ def get_own_photos_by_user(db: Session, user_id: int):
 
     return db.query(OwnPhoto).filter(OwnPhoto.user_id == user_id).all()
 
-# 오운완 사진 소셜탭에 업로드
-def clean_base64_data(base64_image: str) -> str:
+# 소셜탭에 오운완 사진 업로드 하기
+def mark_photo_as_uploaded(db: Session, photo_id: int, user_id: int):
 
-    if base64_image.startswith("data:"):
-        base64_image = re.sub(r"^data:image/\w+;base64,", "", base64_image)
-    return base64_image
-
-def add_base64_padding(base64_image: str) -> str:
-    # Base64 문자열의 길이가 4의 배수가 아니면 패딩을 추가합니다.
-    missing_padding = len(base64_image) % 4
-    if missing_padding:
-        base64_image += '=' * (4 - missing_padding)
-    return base64_image
-
-
-def save_base64_image_to_file(base64_image: str, user_id: int) -> str:
-    try:
-        # Base64 데이터 클린업 (프리픽스 제거 및 패딩 추가)
-        base64_image = clean_base64_data(base64_image)
-        base64_image = add_base64_padding(base64_image)
-
-        print(f"Debug: Cleaned Base64 length: {len(base64_image)}")
-        print(f"Debug: Cleaned Base64 preview: {base64_image[:50]}...")
-
-        # 디코딩된 이미지 데이터를 바이트로 변환
-        image_data = base64.b64decode(base64_image)
-
-        # 저장 디렉토리 설정
-        directory = "static/uploads"
-        if not os.path.exists(directory):
-            os.makedirs(directory)  # 디렉토리 생성
-            print(f"Debug: Created directory {directory}")
-
-        # 파일 이름 생성
-        file_name = f"{user_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
-        file_path = f"static/uploads/{file_name}"  # 이미지 저장 경로
-
-        # 파일 저장
-        with open(file_path, "wb") as file:
-            file.write(image_data)
-
-        print(f"Debug: Image saved at {file_path}")
-        return file_path
-    except Exception as e:
-        print(f"Error saving Base64 image to file: {e}")
-        return None
-
-def mark_photo_as_uploaded(db: Session, photo_id: int, user_id: int, base64_image: str) -> OwnPhoto:
-    print(f"Debug: Received photo_id: {photo_id}, user_id: {user_id}")
-
-    # 데이터베이스에서 사진 정보 조회
     photo = db.query(OwnPhoto).filter(OwnPhoto.id == photo_id, OwnPhoto.user_id == user_id).first()
-
     if not photo:
-        print(f"Debug: No photo found for photo_id: {photo_id}, user_id: {user_id}")
-        raise Exception("Photo not found or not authorized")
-
-    print(f"Debug: Photo found: {photo}")
-
-    # Base64 이미지를 파일로 저장
-    photo_path = save_base64_image_to_file(base64_image, user_id)
-    if not photo_path:
-        raise Exception("Failed to save Base64 image to file.")
-
-    # 데이터베이스 업데이트
-    photo.photo_path = photo_path  # 저장된 파일 경로를 업데이트
-    photo.is_uploaded = True  # 업로드 상태를 True로 변경
+        return None
+    photo.is_uploaded = True  # 업로드 상태로 변경
     db.commit()
     db.refresh(photo)
-
-    print(f"Debug: Photo updated successfully with photo_path: {photo_path}")
     return photo
 
 # 소셜탭에서 나랑 친구들이 업로드한 모든 사진 보기
-def convert_image_to_base64(photo_path: str) -> str:
-    try:
-        with open(photo_path, "rb") as img_file:
-            img_data = img_file.read()
-            # Base64로 인코딩
-            img_base64 = base64.b64encode(img_data).decode('utf-8')
-        return img_base64
-    except Exception as e:
-        print(f"Error converting image to Base64: {e}")
-        return None
+def get_social_photos(db: Session, user_id: int):
 
-def get_social_photos_with_base64(db: Session, user_id: int) -> List[dict]:
     # 내 친구들의 ID 가져오기
     friends_subquery = db.query(Friend.friend_id).filter(Friend.user_id == user_id).subquery()
 
@@ -366,23 +294,8 @@ def get_social_photos_with_base64(db: Session, user_id: int) -> List[dict]:
     photos = db.query(OwnPhoto).filter(
         (OwnPhoto.user_id == user_id) |  # 내 사진
         (OwnPhoto.user_id.in_(friends_subquery))  # 친구들의 사진
-    ).filter(OwnPhoto.is_uploaded == True).all()
-    
-    social_photos = []
-
-    for photo in photos:
-        img_base64 = convert_image_to_base64(photo.photo_path)
-        if img_base64:
-            social_photos.append({
-                "id": photo.id,
-                "user_id": photo.user_id,
-                "photo_path": photo.photo_path,
-                "datetime": photo.datetime,
-                "is_uploaded": photo.is_uploaded,
-                "base64_image": f"data:image/jpeg;base64,{img_base64}"  # Base64로 변환된 이미지 추가
-            })
-    
-    return social_photos
+    ).filter(OwnPhoto.is_uploaded == True).all()  # 업로드된 사진만 반환
+    return photos
 
 # 식단 사진 DB 저장 
 def save_meal_photo(db: Session, user_id: int, photo_path: str):

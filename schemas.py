@@ -41,32 +41,32 @@ class OwnPhotoCreate(BaseModel) :
     photo_path: str
 
 
-# class OwnPhotoResponse(BaseModel):
-#     id: int
-#     user_id: int
-#     datetime: datetime
-#     photo_path: str
-#     is_uploaded: bool
-
-#     class Config:
-#         orm_mode = True
-# class OwnPhotoResponse(BaseModel):
-#     id: int
-#     user_id: int
-#     photo_path: Optional[str]
-#     is_uploaded: bool
-#     base64: Optional[str] = None  # Base64 데이터 추가
-
-#     class Config:
-#         orm_mode = True
-
 class OwnPhotoResponse(BaseModel):
     id: int
     user_id: int
     datetime: datetime
     photo_path: str
     is_uploaded: bool
-    base64_image: Optional[str]  # Base64 이미지 필드 추가 (선택적)
+
+    class Config:
+        orm_mode = True
+class OwnPhotoResponse(BaseModel):
+    id: int
+    user_id: int
+    photo_path: Optional[str]
+    is_uploaded: bool
+    # base64: Optional[str] = None  # Base64 데이터 추가
+
+    class Config:
+        orm_mode = True
+
+class OwnPhotoResponse(BaseModel):
+    id: int
+    user_id: int
+    datetime: datetime 
+    photo_path: str
+    is_uploaded: bool
+    # base64_image: Optional[str]  # Base64 이미지 필드 추가 (선택적)
 
     class Config:
         orm_mode = True
@@ -114,22 +114,22 @@ class BodyMetricsResponse(BaseModel):
         # orm_mode = True
          from_attributes = True 
 
-# class ExerciseUpdateRequest(BaseModel):
-#     exercise_id: int
-#     sets: int
-#     reps: int
+class ExerciseUpdateRequest(BaseModel):
+    exercise_id: int
+    sets: int
+    reps: int
 
-#     class Config:
-#         orm_mode = True
+    class Config:
+        orm_mode = True
 
-# class RoutineResponse(BaseModel):
-#     id: int
-#     user_id: int
-#     routine_name: Optional[str]
-#     exercises: List[ExerciseUpdateRequest]
+class RoutineResponse(BaseModel):
+    id: int
+    user_id: int
+    routine_name: Optional[str]
+    exercises: List[ExerciseUpdateRequest]
 
-#     class Config:
-#         from_attributes = True
+    class Config:
+        from_attributes = True
 
 # 운동별 세트 및 횟수 수정
 class ExerciseUpdateRequest(BaseModel):
@@ -164,4 +164,11 @@ class RoutineResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+#루틴 이름이랑 여러 운동 데이터 저장용
+class RoutineCreateWithName(BaseModel):
+    user_id: int
+    routine_name: str
+    exercises: List[Dict[str, int]]  
 

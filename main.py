@@ -195,37 +195,25 @@ def upload_to_social_tab(
     request: PhotoUploadRequest,
     db: Session = Depends(get_db)
 ):
+
     from crud import mark_photo_as_uploaded
-    # 요청 데이터 검증
-    if not request.photo_id or not request.base64_image:
-        raise HTTPException(status_code=400, detail="Invalid request: photo_id and base64_image are required")
 
-    try:
-        # CRUD 함수 호출하여 사진 업로드 처리
-        photo = mark_photo_as_uploaded(db, request.photo_id, user_id, request.base64_image)
-        if not photo:
-            raise HTTPException(status_code=404, detail="Photo not found or not authorized")
-        return photo
-    except Exception as e:
-        # 에러 처리
-        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
-
+    photo = mark_photo_as_uploaded(db, request.photo_id, user_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found or not authorized")
+    return photo
 
 # 소셜탭에서 나랑 친구들이 업로드한 모든 사진 보기
-@app.get("/users/{user_id}/social/photos", response_model=List[OwnPhotoResponse])
+@app.get("/users/{user_id}/social/photos", response_model=list[OwnPhotoResponse])
 def get_all_social_photos(user_id: int, db: Session = Depends(get_db)):
 
-    from crud import get_social_photos_with_base64
-    try:
-        photos = get_social_photos_with_base64(db, user_id)
-        if not photos:
-            return []  # 빈 리스트 반환
+    from crud import get_social_photos
 
-        print(f"Debug: Retrieved {len(photos)} photos for user_id: {user_id}")
-        return photos
-    except Exception as e:
-        print(f"Error fetching social photos for user_id {user_id}: {e}")
-        raise HTTPException(status_code=500, detail="An unexpected error occurred")
+    photos = get_social_photos(db, user_id)
+    if not photos:
+        raise HTTPException(status_code=404, detail="No social photos found")
+    return photos
+
 # 식단 사진 DB 저장
 @app.post("/users/{user_id}/meal_photos", response_model=MealPhotoResponse)
 def upload_meal_photo(
